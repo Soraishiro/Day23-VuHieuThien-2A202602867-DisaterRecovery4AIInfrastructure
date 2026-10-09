@@ -16,9 +16,18 @@ reports/*.json
 !reports/health-events.jsonl
 !reports/replication.jsonl
 
+# runbook-run.jsonl la timeline 7 buoc cua runbook -- postmortem.md trich dan
+# no bang path:line, nen bat buoc commit. Bo qua no se lam
+# test_evidence_table_tro_vao_file_that FAIL khi nguoi cham clone repo.
+!reports/runbook-run.jsonl
+
+# Ket qua do tools/measure_rto.py ghi ra. rto-evidence.md trich dan
+# reports/measure-drill-1.json, nen cung phai commit.
+!reports/measure-drill-1.json
+!reports/measure-drill-2.json
+
 # File tam do test/thu nghiem sinh ra (khong phai bang chung)
 reports/_*.jsonl
-reports/runbook-run.jsonl
 
 # Python
 __pycache__/
@@ -29,3 +38,6 @@ venv/
 
 # OS
 .DS_Store
+
+# Own reflection
+reflection.md

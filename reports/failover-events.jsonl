@@ -1,0 +1,9 @@
+{"ts": 1791519379.3377209, "iso": "2026-10-09T04:16:19Z", "step": "1_verify_target", "target": "b", "reachable": true, "pool_state": "warm", "count": 0, "weights": false, "took_s": 0.047}
+{"ts": 1791519379.5143597, "iso": "2026-10-09T04:16:19Z", "step": "2_restore_snapshot", "target": "b", "backend": "fs", "rpo_seconds": 4.0, "docs_lost": 2, "embed_model_version": "embed-model=vi-e5-base@v3", "primary_latest_doc_ts": 1791519379.3011396, "restored_latest_doc_ts": 1791519375.300909, "took_s": 0.171}
+{"ts": 1791519379.5313091, "iso": "2026-10-09T04:16:19Z", "step": "3_scale_pool", "target": "b", "pool_state": "full", "note": "warm->full transition bat dau GPU pool warm-up", "took_s": 0.011}
+{"ts": 1791519385.8619242, "iso": "2026-10-09T04:16:25Z", "step": "4_wait_ready", "target": "b", "ok": true, "waited_s": 6.324, "note": "GPU pool warm-up xong"}
+{"ts": 1791519385.8742776, "iso": "2026-10-09T04:16:25Z", "step": "5_dns_cutover", "active_region": "b", "target": "b", "took_s": 0.009}
+{"ts": 1791522361.610454, "iso": "2026-10-09T05:06:01Z", "step": "1_verify_target", "target": "b", "reachable": true, "pool_state": "warm", "count": null, "weights": null, "took_s": 0.0}
+{"ts": 1791522361.7164242, "iso": "2026-10-09T05:06:01Z", "step": "2_restore_snapshot", "target": "b", "backend": "fs", "rpo_seconds": 115.76, "docs_lost": 52, "embed_model_version": "test", "primary_latest_doc_ts": 1791519491.058919, "restored_latest_doc_ts": 1791519375.300909, "took_s": 0.096}
+{"ts": 1791522361.7378273, "iso": "2026-10-09T05:06:01Z", "step": "3_scale_pool", "target": "b", "pool_state": "full", "note": "warm->full transition bat dau GPU pool warm-up", "took_s": 0.013}
+{"ts": 1791522362.747606, "iso": "2026-10-09T05:06:02Z", "step": "4_wait_ready", "target": "b", "ok": false, "waited_s": 1.001, "reason": "ConnectError", "note": "TIMEOUT -> ABORT, khong cutover"}
