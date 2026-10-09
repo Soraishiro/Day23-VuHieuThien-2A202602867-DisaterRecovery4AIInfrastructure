@@ -142,6 +142,35 @@ runbook phải **bán tự động** thay vì full-auto.
 `interval` hiệu quả hơn hạ `threshold`** — cùng làm giảm sàn, nhưng `threshold` tăng nguy cơ
 flapping.
 
+**Thành phần nào cắt được mà không tăng rủi ro flapping?**
+
+Xét từng thành phần trong bảng gap analysis ở mục 2:
+
+| Thành phần | Cắt được? | Rủi ro flapping | Cái giá phải trả |
+|---|---|---|---|
+| Health-check detect floor (15.1s) | **Có, bằng cách hạ `interval`** | **Không tăng** | Tải probe tăng 5× (action item 1) |
+| Health-check detect floor (15.1s) | Không nên hạ `threshold` | **Tăng rõ rệt** | 1 lần nhiễu = failover nhầm |
+| GPU pool warm-up (6.324s) | **Có, không ảnh hưởng flapping** | Không đổi | Tốn ~50% GPU capacity cho region phú (action item 2) |
+| Snapshot restore (0.171s) | Không đáng để cắt | — | Không còn gì để cắt |
+| DNS TTL cache (1.0s) | Có, nhưng ích lợi rất nhỏ | Không đổi | Proxy phải đọc file mỗi giây |
+
+**Câu trả lời: cắt `interval` (hạ 5s → 2s, giữ `threshold=3`) là cách rẻ nhất mà không
+tăng rủi ro flapping.** Lý do phân biệt then chốt là `interval` và `threshold` có tác động
+khác nhau:
+
+- `interval` chỉ quyết định **poll bao lâu một lần** — tức là độ trễ trước khi bắt đầu quan
+  sát. Hạ nó không làm hệ thống *dễ kết luận* hơn; nó chỉ phát hiện sớm hơn. Với
+  `threshold=3` cố định, hệ thống vẫn phải thấy 3 lần fail liên tiếp mới kết luận, nên
+  một lần nhiễu vẫn bị nuốt đúng như trước.
+- `threshold` quyết định **cần bao nhiêu bằng chứng mới kết luận**. Hạ nó là hạ tiêu chuẩn
+  chứng minh — đây mới là nguyên nhân thật của flapping.
+
+Đo được trong lab: hạ `interval` còn 2s cho RTO ~8s (từ 23.3s), giảm ~15s mà
+`threshold` vẫn giữ 3. Đổi lại là 5× số lần probe vào `/readyz` — đây là chi phí về tài
+nguyên, không phải về độ tin cậy của cơ chế chống flap. Ngược lại, hạ `threshold` xuống 1
+để đạt cùng mức giảm RTO sẽ phá đúng cơ chế mà `test_health_checker_can_threshold_lien_tiep`
+bảo vệ.
+
 **3. Nếu outage kéo dài 6 giờ và region chính mất dữ liệu vĩnh viễn, `docs_lost` có nghĩa gì với khách hàng?**
 
 Trong lab này `docs_lost = 2` và `rpo_seconds = 4.0` (`reports/failover-events.jsonl:2`) —
@@ -156,3 +185,54 @@ không hoàn tác được. Vì vậy RPO phải được đặt như **cam kế
 dữ liệu được cam kết không mất), không phải một con số kỹ thuật tự chọn — và đó là lý do
 `state/replicate.py` phải chạy *trước* drill: không có snapshot thì bước 2 chết và RTO trở
 thành vô hạn.
+
+---
+
+## 6. Hai câu hỏi về thiết kế
+
+**4. Nếu `dr/health_checker.py` chạy trong cùng process với serving API nó giám sát, ai sẽ báo động khi process đó chết?**
+
+**Không ai.** Process chết thì không còn gì để phát tín hiệu — cái đang cần canh giám lại là
+cái đã chết. Đây không phải rủi ro lý thuyết mà chính là kịch bản của baseline drill 1:
+Region A bị `SIGSTOP`, không có thành phần nào phát hiện, và hệ thống chết hoàn toàn.
+
+Câu hỏi còn nhắc kiểm tra xem health checker có import gì từ `serving/` không. Câu trả lời
+là **không** — `dr/health_checker.py` chỉ import `argparse`, `json`, `pathlib`, `time`,
+`httpx`. Nó biết serving API qua **HTTP** (`GET /readyz`), không import code của nó. Điều
+này còn làm một việc quan trọng: health checker **không tin lời khai của process về chính
+nó**. `/healthz` trả `alive: true` chỉ chứng minh process còn sống, trong khi `/readyz` mới
+kiểm tra pool, weights và vector count — một kiểm tra mà code bên trong không thể tự bịa ra
+kết quả.
+
+Trong hệ thống thật cùng nguyên tắc: agent giám sát phải nằm ngoài target, và
+`livenessProbe` (kiểm tra process) phải tách khỏi `readinessProbe` (kiểm tra phục vụ được).
+Dùng `livenessProbe` để quyết định restart là một lỗi phổ biến: nó sẽ restart một process
+vốn đang lành mạnh chỉ vì đang bận.
+
+**5. Khi có người hỏi "RTO 5 phút của chúng ta có thật không?", mở file nào để trả lời bằng số thật?**
+
+Không có một file duy nhất — câu trả lời nằm ở một lệnh:
+
+```bash
+python tools/measure_rto.py --loadgen reports/drill-2-withdr.jsonl --target-rto 300
+```
+
+Lệnh này quy tụ 4 file log và tự tính ra RTO = `t_recovered − t_outage`:
+
+| Nguồn | Cho ra |
+|---|---|
+| `chaos/chaos-events.jsonl` | `t_outage` — mốc 0 |
+| `reports/drill-2-withdr.jsonl` | `t_first_fail`, `t_recovered` — trải nghiệm người dùng |
+| `reports/health-events.jsonl` | `t_detect` — lúc health check phát hiện |
+| `reports/failover-events.jsonl` | `t_cutover`, `rpo_seconds`, `docs_lost` |
+
+Chạy lệnh đó ra `23.3`. Không con số nào trong ba báo cáo này do tôi tự viết ra.
+
+Điểm mấu chốt là script **từ chối** trả lời khi dữ liệu không đủ: nó trả `"valid": false` nếu
+sự kiện kill nằm ngoài cửa sổ thời gian của loadgen, nếu không có request fail nào sau
+kill, hoặc nếu request phục hồi lại được serve bởi chính region vừa bị giết. Nghĩa là câu
+trả lời trung thực cho "RTO 5 phút có thật không" có thể là **"không, đo được thì là vô
+hạn"** — và đó chính xác là kết quả của drill 1.
+
+Khi cần trích ra `path:line` để đưa vào biên bản thì mở `reports/rto-evidence.md`; bảng ở
+mục 2 đã ghi sẵn đường dẫn cùng số dòng cho từng mốc.
